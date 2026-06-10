@@ -5,6 +5,9 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Map;
 
 @Service
@@ -20,12 +23,35 @@ public class VirusTotalService {
 
     public Map<String, Object> scanUrl(String url) {
         try {
-            // Step 1 — Submit URL to VirusTotal
             HttpHeaders headers = new HttpHeaders();
             headers.set("x-apikey", apiKey);
-            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
-            HttpEntity<String> submitRequest = new HttpEntity<>("url=" + url, headers);
+            // Step 1 — First check if URL already exists in VirusTotal
+            String urlId = Base64.getUrlEncoder()
+                    .withoutPadding()
+                    .encodeToString(url.getBytes(StandardCharsets.UTF_8));
+
+            try {
+                HttpEntity<Void> checkRequest = new HttpEntity<>(headers);
+                ResponseEntity<Map> checkResponse = restTemplate.exchange(
+                    apiUrl + "/urls/" + urlId,
+                    HttpMethod.GET,
+                    checkRequest,
+                    Map.class
+                );
+
+                if (checkResponse.getStatusCode() == HttpStatus.OK) {
+                    return checkResponse.getBody();
+                }
+            } catch (Exception ignored) {
+                // URL not in database yet — submit it
+            }
+
+            // Step 2 — Submit URL to VirusTotal
+            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+            String encodedUrl = URLEncoder.encode(url, StandardCharsets.UTF_8);
+            HttpEntity<String> submitRequest = new HttpEntity<>("url=" + encodedUrl, headers);
+
             ResponseEntity<Map> submitResponse = restTemplate.exchange(
                 apiUrl + "/urls",
                 HttpMethod.POST,
@@ -33,17 +59,16 @@ public class VirusTotalService {
                 Map.class
             );
 
-            // Step 2 — Get scan ID
+            // Step 3 — Get scan ID
             Map<String, Object> submitData = (Map<String, Object>) submitResponse.getBody().get("data");
             String scanId = (String) submitData.get("id");
 
-            // Step 3 — Wait for analysis to complete (max 30 seconds)
+            // Step 4 — Poll for results
             HttpHeaders getHeaders = new HttpHeaders();
             getHeaders.set("x-apikey", apiKey);
             HttpEntity<Void> getRequest = new HttpEntity<>(getHeaders);
 
             for (int i = 0; i < 10; i++) {
-                // Wait 3 seconds between each check
                 Thread.sleep(3000);
 
                 ResponseEntity<Map> resultResponse = restTemplate.exchange(
@@ -58,13 +83,12 @@ public class VirusTotalService {
                 Map<String, Object> attributes = (Map<String, Object>) data.get("attributes");
                 String status = (String) attributes.get("status");
 
-                // If analysis is complete return results
                 if ("completed".equals(status)) {
                     return body;
                 }
             }
 
-            // Return last result even if not completed
+            // Step 5 — Return last result
             ResponseEntity<Map> finalResponse = restTemplate.exchange(
                 apiUrl + "/analyses/" + scanId,
                 HttpMethod.GET,

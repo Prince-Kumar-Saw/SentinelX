@@ -23,15 +23,36 @@ public class ScanService {
         Map<String, Object> vtResult = virusTotalService.scanUrl(request.getUrl());
 
         // Step 2 — Extract stats from result
-        Map<String, Object> data = (Map<String, Object>) vtResult.get("data");
-        Map<String, Object> attributes = (Map<String, Object>) data.get("attributes");
-        Map<String, Object> stats = (Map<String, Object>) attributes.get("stats");
+        int malicious = 0;
+        int totalEngines = 0;
 
-        int malicious = (int) stats.get("malicious");
-        int totalEngines = malicious
-                + (int) stats.get("harmless")
-                + (int) stats.get("suspicious")
-                + (int) stats.get("undetected");
+        try {
+            Map<String, Object> data = (Map<String, Object>) vtResult.get("data");
+            Map<String, Object> attributes = (Map<String, Object>) data.get("attributes");
+            Map<String, Object> stats = (Map<String, Object>) attributes.get("stats");
+
+            if (stats != null) {
+                malicious = getIntValue(stats, "malicious");
+                int harmless = getIntValue(stats, "harmless");
+                int suspicious = getIntValue(stats, "suspicious");
+                int undetected = getIntValue(stats, "undetected");
+                totalEngines = malicious + harmless + suspicious + undetected;
+            }
+
+            // If still 0 engines try last_analysis_stats (cached results)
+            if (totalEngines == 0) {
+                Map<String, Object> lastStats = (Map<String, Object>) attributes.get("last_analysis_stats");
+                if (lastStats != null) {
+                    malicious = getIntValue(lastStats, "malicious");
+                    int harmless = getIntValue(lastStats, "harmless");
+                    int suspicious = getIntValue(lastStats, "suspicious");
+                    int undetected = getIntValue(lastStats, "undetected");
+                    totalEngines = malicious + harmless + suspicious + undetected;
+                }
+            }
+        } catch (Exception e) {
+            // Keep defaults if parsing fails
+        }
 
         // Step 3 — Calculate risk
         int riskScore = virusTotalService.calculateRiskScore(malicious, totalEngines);
@@ -59,6 +80,14 @@ public class ScanService {
                 .stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
+    }
+
+    private int getIntValue(Map<String, Object> map, String key) {
+        Object value = map.get(key);
+        if (value instanceof Integer) return (Integer) value;
+        if (value instanceof Long) return ((Long) value).intValue();
+        if (value instanceof Double) return ((Double) value).intValue();
+        return 0;
     }
 
     private ScanResponse mapToResponse(Scan scan) {
