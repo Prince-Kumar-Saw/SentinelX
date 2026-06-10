@@ -6,8 +6,7 @@ import com.sentinelx.backend.service.ScanService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,17 +21,17 @@ public class ScanController {
     @PostMapping("/url")
     public ResponseEntity<ScanResponse> scanUrl(
             @Valid @RequestBody ScanRequest request,
-            @AuthenticationPrincipal UserDetails userDetails) {
+            Authentication authentication) {
 
-        ScanResponse response = scanService.scanUrl(request, userDetails.getUsername());
+        ScanResponse response = scanService.scanUrl(request, authentication.getName());
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/history")
     public ResponseEntity<List<ScanResponse>> getScanHistory(
-            @AuthenticationPrincipal UserDetails userDetails) {
+            Authentication authentication) {
 
-        List<ScanResponse> history = scanService.getUserScans(userDetails.getUsername());
+        List<ScanResponse> history = scanService.getUserScans(authentication.getName());
         return ResponseEntity.ok(history);
     }
 }

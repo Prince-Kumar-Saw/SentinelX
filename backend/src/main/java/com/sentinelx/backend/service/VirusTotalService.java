@@ -5,7 +5,6 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import java.util.Base64;
 import java.util.Map;
 
 @Service
@@ -20,33 +19,63 @@ public class VirusTotalService {
     private final RestTemplate restTemplate = new RestTemplate();
 
     public Map<String, Object> scanUrl(String url) {
-        // Step 1 — Submit URL to VirusTotal
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("x-apikey", apiKey);
-        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        try {
+            // Step 1 — Submit URL to VirusTotal
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("x-apikey", apiKey);
+            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
-        HttpEntity<String> submitRequest = new HttpEntity<>("url=" + url, headers);
-        ResponseEntity<Map> submitResponse = restTemplate.exchange(
-            apiUrl + "/urls",
-            HttpMethod.POST,
-            submitRequest,
-            Map.class
-        );
+            HttpEntity<String> submitRequest = new HttpEntity<>("url=" + url, headers);
+            ResponseEntity<Map> submitResponse = restTemplate.exchange(
+                apiUrl + "/urls",
+                HttpMethod.POST,
+                submitRequest,
+                Map.class
+            );
 
-        // Step 2 — Get the scan ID from response
-        Map<String, Object> submitData = (Map<String, Object>) submitResponse.getBody().get("data");
-        String scanId = (String) submitData.get("id");
+            // Step 2 — Get scan ID
+            Map<String, Object> submitData = (Map<String, Object>) submitResponse.getBody().get("data");
+            String scanId = (String) submitData.get("id");
 
-        // Step 3 — Fetch the scan result using the ID
-        HttpEntity<Void> getRequest = new HttpEntity<>(headers);
-        ResponseEntity<Map> resultResponse = restTemplate.exchange(
-            apiUrl + "/analyses/" + scanId,
-            HttpMethod.GET,
-            getRequest,
-            Map.class
-        );
+            // Step 3 — Wait for analysis to complete (max 30 seconds)
+            HttpHeaders getHeaders = new HttpHeaders();
+            getHeaders.set("x-apikey", apiKey);
+            HttpEntity<Void> getRequest = new HttpEntity<>(getHeaders);
 
-        return resultResponse.getBody();
+            for (int i = 0; i < 10; i++) {
+                // Wait 3 seconds between each check
+                Thread.sleep(3000);
+
+                ResponseEntity<Map> resultResponse = restTemplate.exchange(
+                    apiUrl + "/analyses/" + scanId,
+                    HttpMethod.GET,
+                    getRequest,
+                    Map.class
+                );
+
+                Map<String, Object> body = resultResponse.getBody();
+                Map<String, Object> data = (Map<String, Object>) body.get("data");
+                Map<String, Object> attributes = (Map<String, Object>) data.get("attributes");
+                String status = (String) attributes.get("status");
+
+                // If analysis is complete return results
+                if ("completed".equals(status)) {
+                    return body;
+                }
+            }
+
+            // Return last result even if not completed
+            ResponseEntity<Map> finalResponse = restTemplate.exchange(
+                apiUrl + "/analyses/" + scanId,
+                HttpMethod.GET,
+                getRequest,
+                Map.class
+            );
+            return finalResponse.getBody();
+
+        } catch (Exception e) {
+            throw new RuntimeException("VirusTotal scan failed: " + e.getMessage());
+        }
     }
 
     public int calculateRiskScore(int malicious, int total) {
