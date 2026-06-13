@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import Scanner from './pages/Scanner'
+import History from './pages/History'
 
 function App() {
   const [user, setUser] = useState(null)
@@ -62,6 +63,17 @@ function App() {
           >
             🔍 URL Scanner
           </button>
+
+          <button
+            onClick={() => setActivePage('history')}
+            className={`w-full text-left px-4 py-3 rounded-lg mb-2 transition duration-200 ${
+              activePage === 'history'
+                ? 'bg-blue-600 text-white'
+                : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+            }`}
+          >
+            📋 Scan History
+          </button>
         </nav>
 
         {/* User Info */}
@@ -81,6 +93,7 @@ function App() {
       {/* Main Content */}
       <div className="flex-1 overflow-auto">
         {activePage === 'scanner' && <Scanner token={user.token} />}
+        {activePage === 'history' && <History token={user.token} />}
       </div>
 
     </div>
