@@ -19,10 +19,8 @@ public class ScanService {
     private final VirusTotalService virusTotalService;
 
     public ScanResponse scanUrl(ScanRequest request, String userEmail) {
-        // Step 1 — Call VirusTotal
         Map<String, Object> vtResult = virusTotalService.scanUrl(request.getUrl());
 
-        // Step 2 — Extract stats from result
         int malicious = 0;
         int totalEngines = 0;
 
@@ -39,7 +37,6 @@ public class ScanService {
                 totalEngines = malicious + harmless + suspicious + undetected;
             }
 
-            // If still 0 engines try last_analysis_stats (cached results)
             if (totalEngines == 0) {
                 Map<String, Object> lastStats = (Map<String, Object>) attributes.get("last_analysis_stats");
                 if (lastStats != null) {
@@ -54,11 +51,9 @@ public class ScanService {
             // Keep defaults if parsing fails
         }
 
-        // Step 3 — Calculate risk
         int riskScore = virusTotalService.calculateRiskScore(malicious, totalEngines);
         String riskLevel = virusTotalService.getRiskLevel(riskScore);
 
-        // Step 4 — Save to database
         Scan scan = Scan.builder()
                 .url(request.getUrl())
                 .riskScore(riskScore)
@@ -70,8 +65,6 @@ public class ScanService {
                 .build();
 
         Scan saved = scanRepository.save(scan);
-
-        // Step 5 — Return response
         return mapToResponse(saved);
     }
 
@@ -80,6 +73,17 @@ public class ScanService {
                 .stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
+    }
+
+    public void deleteScan(Long id, String userEmail) {
+        Scan scan = scanRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Scan not found!"));
+
+        if (!scan.getScannedBy().equals(userEmail)) {
+            throw new RuntimeException("Unauthorized to delete this scan!");
+        }
+
+        scanRepository.delete(scan);
     }
 
     private int getIntValue(Map<String, Object> map, String key) {
