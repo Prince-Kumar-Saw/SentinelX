@@ -165,5 +165,4 @@ function History({ token }) {
     </div>
   )
 }
-
 export default History
